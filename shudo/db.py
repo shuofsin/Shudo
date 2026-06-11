@@ -34,7 +34,8 @@ class Database:
             CREATE TABLE IF NOT EXISTS pomodoros (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id INTEGER,
-                duration_minutes INTEGER NOT NULL,
+                duration_minutes INTEGER NOT NULL DEFAULT 25,
+                rest_minutes INTEGER NOT NULL DEFAULT 5,
                 completed_at TEXT NOT NULL DEFAULT (datetime('now')), 
                 FOREIGN KEY (task_id) REFERENCES tasks(id)
             );    
@@ -65,12 +66,61 @@ class Database:
         self.c.execute("INSERT INTO tasks (task, priority, status, due_date) VALUES (?, ?, ?, ?)", 
                        (task, priority, "pending", due_date))
         self.conn.commit()
+        return self.c.lastrowid
     
     def get_tasks(self):
-        self.c.execute("SELECT task, priority, due_date FROM tasks ORDER BY due_date ASC, priority DESC")
-        self.c.fetchall()
+        self.c.execute("""
+                        SELECT id, task, priority, status, due_date 
+                        FROM tasks 
+                        ORDER BY 
+                            CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
+                            due_date ASC
+                       """)
+        return self.c.fetchall()
+
+    def get_task_by_id(self, task_id):
+        self.c.execute("SELECT id, task, priority, status, due_date FROM tasks WHERE id = ?", (task_id,))
+        return self.c.fetchone()
     
     def set_task_status(self, task_id, status="done"):
         self.c.execute("UPDATE tasks SET status = ? WHERE id = ?", 
                        (status, task_id))
-        self.conn.commit();
+        self.conn.commit()
+
+    def delete_task(self, task_id):
+        self.c.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        self.conn.commit()
+    
+    def add_pomo_session(self, task_id, duration_minutes=25, rest_minutes=5):
+        self.c.execute(
+            "INSERT INTO pomodoros (task_id, duration_minutes, rest_minutes) VALUES (?, ?, ?)", 
+            (task_id, duration_minutes, rest_minutes))
+        self.conn.commit()
+        return self.c.lastrowid
+
+    def get_pomo_stats(self, task_id=None):
+        if task_id is None:
+            self.c.execute("""
+                SELECT COUNT(*) as total_sessions,
+                    COALESCE(SUM(duration_minutes), 0) as total_minutes
+                FROM pomodoros
+            """)
+        else:
+            self.c.execute("""
+                SELECT COUNT(*) as total_sessions,
+                    COALESCE(SUM(duration_minutes), 0) as total_minutes
+                FROM pomodoros WHERE task_id = ?
+            """, (task_id,))
+        return self.c.fetchone()
+
+    def get_pomo_sessions_all(self):
+        self.c.execute("""
+                        SELECT p.id, p.duration_minutes, p.completed_at, t.task
+                        FROM pomodoros p
+                        LEFT JOIN tasks t ON p.task_id = t.id
+                        ORDER BY p.completed_at DESC
+                       """)
+        return self.c.fetchall()
+    
+    def close(self):
+        self.conn.close()
