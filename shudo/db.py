@@ -1,6 +1,7 @@
 # db.py
 import sqlite3
 import os
+import json
 
 class Database:
     def __init__(self, db_path=None):
@@ -25,9 +26,10 @@ class Database:
                 task TEXT NOT NULL,
                 priority TEXT NOT NULL DEFAULT 'medium'
                     CHECK(priority IN ('high', 'medium', 'low')),
-                status TEXT NOT NULL DEFAULT 'pending'
-                    CHECK(status IN ('pending', 'done')),
+                status TEXT NOT NULL DEFAULT 'ready'
+                    CHECK(status IN ('ready', 'ongoing', 'done')),
                 due_date TEXT,
+                subtasks TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -70,27 +72,37 @@ class Database:
 
     def add_task(self, task, priority="medium", due_date=None):
         self.c.execute("INSERT INTO tasks (task, priority, status, due_date) VALUES (?, ?, ?, ?)", 
-                       (task, priority, "pending", due_date))
+                       (task, priority, "ready", due_date))
         self.conn.commit()
         return self.c.lastrowid
     
     def get_tasks(self):
         self.c.execute("""
-                        SELECT id, task, priority, status, due_date 
-                        FROM tasks 
-                        ORDER BY 
-                            CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
-                            due_date ASC
-                       """)
+            SELECT id, task, priority, status, due_date, subtasks, created_at 
+            FROM tasks 
+            ORDER BY 
+                CASE status 
+                    WHEN 'ready' THEN 1 
+                    WHEN 'ongoing' THEN 2 
+                    WHEN 'done' THEN 3 
+                END,
+                created_at DESC
+        """)
         return self.c.fetchall()
 
     def get_task_by_id(self, task_id):
-        self.c.execute("SELECT id, task, priority, status, due_date FROM tasks WHERE id = ?", (task_id,))
+        self.c.execute("SELECT id, task, priority, status, due_date, subtasks FROM tasks WHERE id = ?", (task_id,))
         return self.c.fetchone()
     
-    def set_task_status(self, task_id, status="done"):
-        self.c.execute("UPDATE tasks SET status = ? WHERE id = ?", 
-                       (status, task_id))
+    def update_task_status(self, task_id, new_status):
+        self.c.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
+        self.conn.commit()
+
+    def update_task(self, task_id, task_name, subtasks):
+        self.c.execute(
+            "UPDATE tasks SET task = ?, subtasks = ? WHERE id = ?",
+            (task_name, json.dumps(subtasks), task_id)
+        )
         self.conn.commit()
 
     def delete_task(self, task_id):
@@ -121,11 +133,11 @@ class Database:
 
     def get_pomo_sessions_all(self):
         self.c.execute("""
-                        SELECT p.id, p.duration_minutes, p.completed_at, t.task
-                        FROM pomodoros p
-                        LEFT JOIN tasks t ON p.task_id = t.id
-                        ORDER BY p.completed_at DESC
-                       """)
+            SELECT p.id, p.duration_minutes, p.completed_at, t.task
+            FROM pomodoros p
+            LEFT JOIN tasks t ON p.task_id = t.id
+            ORDER BY p.completed_at DESC
+        """)
         return self.c.fetchall()
     
     def close(self):

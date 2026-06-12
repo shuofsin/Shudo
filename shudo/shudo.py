@@ -6,6 +6,7 @@ import time
 
 from db import Database
 from views.notes_view import NotesView
+from views.tasks_view import TasksView
 
 class ShuDoApp:
     """Main application controller."""
@@ -24,12 +25,12 @@ class ShuDoApp:
 
         self.views = [
             NotesView(self),
+            TasksView(self),
         ]
 
         curses.start_color()
         curses.use_default_colors()
         curses.init_pair(1, curses.COLOR_GREEN, -1)
-        curses.init_pair(2, curses.COLOR_CYAN, -1)
 
         curses.curs_set(0)
         self.stdscr.keypad(True)
@@ -69,7 +70,7 @@ class ShuDoApp:
         msg = self.command_str
         self.stdscr.hline(y, 0, ' ', self.width)
         if msg:
-            self.stdscr.addstr(y, 1, msg, curses.color_pair(1))
+            self.stdscr.addstr(y, 1, msg, curses.color_pair(1) | curses.A_DIM)
     
     def draw_toast_message(self):
         """Draw a toast message"""

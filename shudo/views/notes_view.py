@@ -21,24 +21,29 @@ class NotesView:
 
         if not self.notes:
             stdscr.addstr(y, 2, "No notes yet.", curses.color_pair(1))
+            stdscr.hline(y_end, 0, ' ', self.app.width)
+            stdscr.addstr(y_end, 1, self.shortcut_hints(), curses.color_pair(1) | curses.A_DIM)
             return
 
         for i, note in enumerate(self.notes):
             if y >= y_end - 1:
                 break
 
-            prefix = "> " if i == self.selected_index else "  "
+            is_selected = (i == self.selected_index)
             title = note["title"]
             max_w = self.app.width - 6
             if len(title) > max_w:
                 title = title[:max_w - 3] + "..."
             
-            attr = curses.color_pair(2) | curses.A_BOLD if i == self.selected_index else curses.color_pair(1)
-            stdscr.addstr(y, 2, f"{prefix}{title}", attr)
+            if is_selected:
+                stdscr.addstr(y, 2, "▸ ", curses.color_pair(1) | curses.A_BOLD)
+                stdscr.addstr(y, 4, title, curses.color_pair(1) | curses.A_BOLD)
+            else:
+                stdscr.addstr(y, 2, f"  {title}", curses.color_pair(1))
             y += 1
         
         stdscr.hline(y_end, 0, ' ', self.app.width)
-        stdscr.addstr(y_end, 1, self.shortcut_hints(), curses.color_pair(1))
+        stdscr.addstr(y_end, 1, self.shortcut_hints(), curses.color_pair(1) | curses.A_DIM)
 
     def handle_key(self, key):
         """Handle a keypress"""
@@ -57,7 +62,7 @@ class NotesView:
             self.selected_index += 1
     
     def shortcut_hints(self):
-        return "[n] New  [d] Delete  [s] Search  ↑↓ Navigate"
+        return "[n] New  [d] Delete  [s] Search"
 
     def create_note(self):
         title = self.app.prompt("Title: ")
@@ -103,9 +108,9 @@ class NotesView:
             h.hline(0, x, ' ', app.width - x)
 
             # Title bar
-            stdscr.hline(1, 1, '-', app.width, curses.color_pair(1))
-            stdscr.addstr(2, 2, title, curses.color_pair(1))
-            stdscr.hline(3, 1, '-', app.width, curses.color_pair(1))
+            stdscr.hline(1, 1, '-', app.width)
+            stdscr.addstr(2, 2, title, curses.A_NORMAL)
+            stdscr.hline(3, 1, '-', app.width)
 
             # Content area
             max_y = app.height - 4
@@ -117,7 +122,7 @@ class NotesView:
             # Command string
             cmd_y = app.height - 2
             stdscr.hline(cmd_y, 0, ' ', app.width)
-            stdscr.addstr(cmd_y, 2, "[ctrl + d] Save  [ctrl + x] Exit  [ctrl + r] Rename", curses.color_pair(1))
+            stdscr.addstr(cmd_y, 2, "[ctrl + d] Save  [ctrl + x] Back  [ctrl + r] Rename", curses.color_pair(1))
 
             # Toast
             app.draw_toast_message()
@@ -145,7 +150,7 @@ class NotesView:
                 # check for unsaved changes
                 current_content = "\n".join(lines).strip()
                 if current_content != existing_content:
-                    app.set_toast_message("Close note? Unsaved changes will be lost. [y] Yes  [n] No")
+                    app.set_toast_message("Close? Unsaved changes will be lost. [y] Yes  [n] No")
                     app.draw_toast_message()
                     stdscr.refresh()
 
