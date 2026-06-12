@@ -20,11 +20,11 @@ class NotesView:
         y = y_start
 
         if not self.notes:
-            stdscr.addstr(y, 2, "No notes yet. Press 'n' to create one.", curses.color_pair(1))
+            stdscr.addstr(y, 2, "No notes yet.", curses.color_pair(1))
             return
 
         for i, note in enumerate(self.notes):
-            if y >= y_end:
+            if y >= y_end - 1:
                 break
 
             prefix = "> " if i == self.selected_index else "  "
@@ -36,15 +36,21 @@ class NotesView:
             attr = curses.color_pair(2) | curses.A_BOLD if i == self.selected_index else curses.color_pair(1)
             stdscr.addstr(y, 2, f"{prefix}{title}", attr)
             y += 1
+        
+        stdscr.hline(y_end, 0, ' ', self.app.width)
+        stdscr.addstr(y_end, 1, self.shortcut_hints(), curses.color_pair(1))
 
     def handle_key(self, key):
         """Handle a keypress"""
         if key == ord('n'):
-            self.add_note()
+            self.create_note()
         elif key == ord('d'):
             self.delete_note()
         elif key == ord('s'):
             self.search_notes()
+        elif key == ord('\n') and self.notes:
+            note = self.notes[self.selected_index]
+            self._open_editor(note["title"], note["content"], note["id"])
         elif key == curses.KEY_UP and self.selected_index > 0:
             self.selected_index -= 1
         elif key == curses.KEY_DOWN and self.selected_index < len(self.notes) - 1:
@@ -53,11 +59,11 @@ class NotesView:
     def shortcut_hints(self):
         return "[n] New  [d] Delete  [s] Search  ↑↓ Navigate"
 
-    def add_note(self):
+    def create_note(self):
         title = self.app.prompt("Title: ")
         if not title:
             return 
-        self._open_editor(title, "")
+        self._open_editor(title, "", None)
     
     def delete_note(self):
         if not self.notes:
@@ -72,7 +78,7 @@ class NotesView:
         # TODO
         self.app.set_toast_message("Search coming soon!")
     
-    def _open_editor(self, title, existing_content):
+    def _open_editor(self, title, existing_content, note_id=None):
         app = self.app
         stdscr = app.stdscr
         stdscr.nodelay(False)
@@ -111,7 +117,7 @@ class NotesView:
             # Command string
             cmd_y = app.height - 2
             stdscr.hline(cmd_y, 0, ' ', app.width)
-            stdscr.addstr(cmd_y, 2, "[s] Save  [q] Exit  [r] Rename", curses.color_pair(1))
+            stdscr.addstr(cmd_y, 2, "[ctrl + d] Save  [ctrl + x] Exit  [ctrl + r] Rename", curses.color_pair(1))
 
             # Toast
             app.draw_toast_message()
@@ -124,18 +130,18 @@ class NotesView:
             # Input
             key = stdscr.getch()
 
-            if key == ord('s'):
+            if key == 4:
                 content = "\n".join(lines).strip()
                 if content:
-                    if existing_content is not None:
-                        # TODO: update existing note
-                        pass
+                    if existing_content:
+                        app.db.update_note(note_id, title, content)
                     else:
-                        app.db.add_note(title, content)
+                        note_id = app.db.add_note(title, content)
+                        existing_content = content
                     app.set_toast_message("Note saved!")
                     self.refresh_data()
 
-            elif key == ord('q'):
+            elif key == 24:
                 # check for unsaved changes
                 current_content = "\n".join(lines).strip()
                 if current_content != existing_content:
@@ -147,17 +153,23 @@ class NotesView:
                         confirm = stdscr.getch()
                         if confirm == ord('y'):
                             editing = False
+                            app.set_toast_message("")
+                            app.draw_toast_message()
                             break
                         elif confirm == ord('n'):
                             app.set_toast_message("")
+                            app.draw_toast_message()
                             break
                 else:
                     editing = False
 
-            elif key == ord('r'):
-                new_title = self.app.prompt("Rename: ", title)
-                if new_title:
+            elif key == 18:
+                new_title = self.app.prompt("New Title: ", title)
+                if new_title and new_title != title:
                     title = new_title
+                    if note_id is not None:
+                        content = "\n".join(lines).strip()
+                        app.db.update_note(note_id, title, content)
                     app.set_toast_message(f"Title changed to '{title}'")
 
             elif key == curses.KEY_UP and cursor_y > 0:
@@ -197,6 +209,11 @@ class NotesView:
                 elif cursor_y < len(lines) - 1:
                     lines[cursor_y] += lines[cursor_y + 1]
                     del lines[cursor_y + 1]
+            
+            elif key == ord('\t'):
+                spaces = "    "
+                lines[cursor_y] = lines[cursor_y][:cursor_x] + spaces + lines[cursor_y][cursor_x:]
+                cursor_x += 4
 
             elif 32 <= key <= 126:  # printable characters
                 ch = chr(key)

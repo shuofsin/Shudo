@@ -20,7 +20,7 @@ class ShuDoApp:
         self.command_str = "[tab] switch views  [q] quit"
         self.toast_message = ""
         self.toast_time = 0.0
-        self.toast_duration = 4
+        self.toast_duration = 2
 
         self.views = [
             NotesView(self),

@@ -47,6 +47,12 @@ class Database:
                        (title, content))
         self.conn.commit()
         return self.c.lastrowid
+    
+    def update_note(self, note_id, title, content):
+        self.c.execute(
+            "UPDATE notes SET title = ?, content = ? WHERE id = ?",
+            (title, content, note_id))
+        self.conn.commit()
 
     def get_notes(self):
         self.c.execute("SELECT id, title, content, created_at FROM notes ORDER BY created_at DESC")
