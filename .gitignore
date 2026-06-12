@@ -1,0 +1,5 @@
+*.db
+__pycache__/
+shudo/*.db
+shudo/__pycache__/*
+shudo/views/__pycache__/*
