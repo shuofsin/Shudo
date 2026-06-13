@@ -20,6 +20,47 @@ class PomoView:
     def refresh_data(self):
         pass
 
+    # ── tick (called by main loop) ──────────────────────────────
+
+    def tick(self):
+        """Decrement timer. Called every frame from main loop."""
+        if not self.running or self.paused:
+            return
+
+        now = time.time()
+        elapsed = int(now - self.last_tick)
+        if elapsed <= 0:
+            return
+
+        self.remaining -= elapsed
+        self.last_tick = now
+
+        if self.remaining <= 0:
+            if self.phase == "work":
+                self.app.db.add_pomo_session(
+                    self.task_id, self.work_duration // 60, self.rest_duration // 60
+                )
+                self.app.set_toast_message("Work complete! Take a break...")
+                self.phase = "rest"
+                self.remaining = self.rest_duration
+            else:
+                self.app.set_toast_message("Rest complete! Ready to work.")
+                self.phase = "work"
+                self.remaining = self.work_duration
+
+    def mini_status(self):
+        """Short string for the toast bar when on another view."""
+        if not self.running:
+            return ""
+        if self.paused:
+            return "POMODORO — PAUSED"
+        mins = self.remaining // 60
+        secs = self.remaining % 60
+        label = "WORK" if self.phase == "work" else "REST"
+        return f"POMODORO — {label} {mins:02d}:{secs:02d}"
+
+    # ── rendering ───────────────────────────────────────────────
+
     def render(self, stdscr, y_start, y_end):
         h = self.app.height
         w = self.app.width
@@ -28,25 +69,33 @@ class PomoView:
         center_x = w // 2
 
         phase_label = "WORK" if self.phase == "work" else "REST"
-        phase_attr = curses.color_pair(1) | curses.A_BOLD if self.phase == "work" else curses.A_BOLD
-        stdscr.addstr(center_y - 2, center_x - len(phase_label) // 2, phase_label, phase_attr)
+        attr = curses.color_pair(1) | curses.A_BOLD if self.phase == "work" else curses.A_BOLD
+        stdscr.addstr(center_y - 2, center_x - len(phase_label) // 2, phase_label, attr)
 
         mins = self.remaining // 60
         secs = self.remaining % 60
         time_str = f"{mins:02d}:{secs:02d}"
+        if self.paused:
+            time_str += " (paused)"
         stdscr.addstr(center_y, center_x - len(time_str) // 2, time_str, curses.A_BOLD)
 
         total = self.work_duration if self.phase == "work" else self.rest_duration
         if total > 0:
-            progress = 1 - (self.remaining / total)
+            progress = 1 - (self.remaining / total) if self.running else 0
             bar_w = min(w - 10, 40)
             filled = int(bar_w * progress)
             bar = "█" * filled + "░" * (bar_w - filled)
             stdscr.addstr(center_y + 1, center_x - bar_w // 2, bar, curses.A_DIM)
 
+        stdscr.addstr(center_y + 3, center_x - 10,
+                      f"Work: {self.work_duration//60}m  Rest: {self.rest_duration//60}m",
+                      curses.A_DIM)
+
         stdscr.hline(h - 3, 0, ' ', w)
         stdscr.addstr(h - 3, 1, self.shortcut_hints(), curses.color_pair(1) | curses.A_DIM)
     
+    # ── controls ────────────────────────────────────────────────
+
     def handle_key(self, key):
         if key == ord(' '):
             if not self.running:
@@ -59,47 +108,37 @@ class PomoView:
             self.reset_timer()
         elif key == ord('w'):
             self.set_duration()
-        elif key == ord('q'):
-            if self.running:
-                self.stop_timer()
     
     def shortcut_hints(self):
         if not self.running:
-            return "[Space] Start  [w] Set work time  [q] Back"
+            return "[Space] Start  [w] Set time"
         elif self.paused:
-            return "[Space] Resume  [r] Reset  [q] Back"
+            return "[Space] Resume  [r] Reset"
         else:
-            return "[Space] Pause  [r] Reset  [q] Back"
-    
+            return "[Space] Pause  [r] Reset"
+
     def start_timer(self):
         self.running = True
         self.paused = False
         self.remaining = self.work_duration
         self.phase = "work"
-        self.start_time = time.time()
-        self._run_timer()
-    
+        self.last_tick = time.time()
+        self.app.set_toast_message("Pomodoro started!")
+
     def pause_timer(self):
         self.paused = True
-        self.pause_remaining = self.remaining
     
     def resume_timer(self):
         self.paused = False
-        self.start_time = time.time()
-        self.remaining = self.pause_remaining
-        self._run_timer()
-    
+        self.last_tick = time.time()
+
     def reset_timer(self):
         self.running = False
         self.paused = False
         self.remaining = 0
         self.phase = "work"
-    
-    def stop_timer(self):
-        self.running = False
-        self.paused = False
-        self.remaining = 0
-    
+        self.app.set_toast_message("")
+
     def set_duration(self):
         prompt = self.app.prompt("Work minutes: ", "25")
         try: 
@@ -107,7 +146,6 @@ class PomoView:
             if mins > 0:
                 self.work_duration = mins * 60
         except ValueError:
-            # TODO - Throw toast message error and reprompt user
             pass
         prompt = self.app.prompt("Rest minutes: ", "5")
         try:
@@ -115,49 +153,5 @@ class PomoView:
             if mins > 0:
                 self.rest_duration = mins * 60
         except ValueError:
-            # TODO - Throw toast message error and reprompt user
             pass
-        self.app.set_toast_message(f"Work: {self.work_duration//60}m Rest: {self.rest_duration//60}m")
-    
-    def _run_timer(self):
-        app = self.app
-        stdscr = app.stdscr
-
-        while self.running and not self.paused:
-            now = time.time()
-            elapsed = int(now - self.start_time)
-            self.remaining = max(0, self.work_duration - elapsed) if self.phase == "work" else max(0, self.rest_duration - elapsed)
-
-            if self.remaining <= 0:
-                if self.phase == "work":
-                    app.db.add_pomo_session(self.task_id, self.work_duration // 60, self.rest_duration // 60)
-                    app.set_toast_message("Work session complete! Take a break...")
-                    self.phase = "rest"
-                    self.remaining = self.rest_duration
-                    self.start_time = time.time()
-                else:
-                    app.set_toast_message("Time's up! Get ready to work...")
-                    self.phase = "work"
-                    self.remaining = self.work_duration
-                    self.start_time = time.time()
-            
-            stdscr.erase()
-            app.draw_header()
-            self.render(stdscr, 2, app.height - 3)
-            app.draw_command_string()
-            app.draw_toast_message()
-            stdscr.refresh()
-
-            key = stdscr.getch()
-            if key != -1:
-                if key == ord(' '):
-                    self.pause_timer()
-                    break
-                elif key == ord('r'):
-                    self.reset_timer()
-                    break
-                elif key == ord('q'):
-                    self.stop_timer()
-                    break
-
-            time.sleep(0.1)
+        self.app.set_toast_message(f"Work: {self.work_duration//60}m  Rest: {self.rest_duration//60}m")

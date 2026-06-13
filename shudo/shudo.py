@@ -75,16 +75,22 @@ class ShuDoApp:
             self.stdscr.addstr(y, 1, msg, curses.color_pair(1) | curses.A_DIM)
     
     def draw_toast_message(self):
-        """Draw a toast message"""
+        """Draw a toast message or pomodoro mini status."""
         y = self.height - 1
         self.stdscr.hline(y, 0, ' ', self.width)
 
-        if time.time() - self.toast_time > self.toast_duration:
-            self.toast_message = ""
-            return
-        
-        if self.toast_message:
+        # check if a toast message is still active
+        if time.time() - self.toast_time <= self.toast_duration and self.toast_message:
             self.stdscr.addstr(y, 1, self.toast_message, curses.color_pair(1))
+            return
+
+        self.toast_message = ""
+
+        # show pomodoro mini status if running in background
+        pomo = self.views[2]
+        mini = pomo.mini_status()
+        if mini:
+            self.stdscr.addstr(y, 1, mini, curses.color_pair(1))
 
     def set_toast_message(self, message):
         self.toast_message = message
@@ -93,6 +99,9 @@ class ShuDoApp:
     def run(self):
         self.db.init_db()
         while self.running:
+            # tick background timers
+            self.views[2].tick()
+
             self.stdscr.erase()
             self.draw_header()
 
