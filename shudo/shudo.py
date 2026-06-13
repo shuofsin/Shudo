@@ -7,6 +7,7 @@ import time
 from db import Database
 from views.notes_view import NotesView
 from views.tasks_view import TasksView
+from views.pomo_view import PomoView
 
 class ShuDoApp:
     """Main application controller."""
@@ -26,6 +27,7 @@ class ShuDoApp:
         self.views = [
             NotesView(self),
             TasksView(self),
+            PomoView(self),
         ]
 
         curses.start_color()

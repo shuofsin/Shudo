@@ -36,7 +36,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS pomodoros (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id INTEGER,
-                duration_minutes INTEGER NOT NULL DEFAULT 25,
+                work_minutes INTEGER NOT NULL DEFAULT 25,
                 rest_minutes INTEGER NOT NULL DEFAULT 5,
                 completed_at TEXT NOT NULL DEFAULT (datetime('now')), 
                 FOREIGN KEY (task_id) REFERENCES tasks(id)
@@ -109,10 +109,10 @@ class Database:
         self.c.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
         self.conn.commit()
     
-    def add_pomo_session(self, task_id, duration_minutes=25, rest_minutes=5):
+    def add_pomo_session(self, task_id, work_minutes=25, rest_minutes=5):
         self.c.execute(
-            "INSERT INTO pomodoros (task_id, duration_minutes, rest_minutes) VALUES (?, ?, ?)", 
-            (task_id, duration_minutes, rest_minutes))
+            "INSERT INTO pomodoros (task_id, work_minutes, rest_minutes) VALUES (?, ?, ?)", 
+            (task_id, work_minutes, rest_minutes))
         self.conn.commit()
         return self.c.lastrowid
 
@@ -120,20 +120,20 @@ class Database:
         if task_id is None:
             self.c.execute("""
                 SELECT COUNT(*) as total_sessions,
-                    COALESCE(SUM(duration_minutes), 0) as total_minutes
+                    COALESCE(SUM(work_minutes), 0) as total_minutes
                 FROM pomodoros
             """)
         else:
             self.c.execute("""
                 SELECT COUNT(*) as total_sessions,
-                    COALESCE(SUM(duration_minutes), 0) as total_minutes
+                    COALESCE(SUM(work_minutes), 0) as total_minutes
                 FROM pomodoros WHERE task_id = ?
             """, (task_id,))
         return self.c.fetchone()
 
     def get_pomo_sessions_all(self):
         self.c.execute("""
-            SELECT p.id, p.duration_minutes, p.completed_at, t.task
+            SELECT p.id, p.work_minutes, p.completed_at, t.task
             FROM pomodoros p
             LEFT JOIN tasks t ON p.task_id = t.id
             ORDER BY p.completed_at DESC
